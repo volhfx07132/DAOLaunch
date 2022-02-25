@@ -4,8 +4,8 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "../Unitls/EnumerableSet.sol";
+import "../Unitls/Ownable.sol";
 
 contract PresaleFactory is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
