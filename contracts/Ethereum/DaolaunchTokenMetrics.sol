@@ -43,7 +43,7 @@ contract DaolaunchTokenMetrics is Ownable {
         }
         require(lData.length > 0, "Must lock data");
         uint256 _totalLock;
-        uint256 _tmpDataId = tokenInfo[tokenAddress].currentDataId;
+         uint256 _tmpDataId = tokenInfo[tokenAddress].currentDataId;
 
         for (uint256 index = 0; index < lData.length; index++) {
             _totalLock = _totalLock + lData[index].lockPercent;
