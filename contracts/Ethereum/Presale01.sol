@@ -8,7 +8,7 @@ import "../common/IUniswapV2Factory.sol";
 import "../common/IPresaleLockForwarder.sol";
 import "../common/IWETH.sol";
 import "../common/IPresaleSettings.sol";
-import "../common/IERC20Custom.sol";
+import "../Common/IERC20Custom.sol";
 
 contract Presale01 is ReentrancyGuard {
     struct PresaleInfo {
