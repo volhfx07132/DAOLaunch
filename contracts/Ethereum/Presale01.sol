@@ -2,13 +2,13 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "../common/TransferHelper.sol";
-import "../common/IUniswapV2Factory.sol";
-import "../common/IPresaleLockForwarder.sol";
-import "../common/IWETH.sol";
-import "../common/IPresaleSettings.sol";
-import "../Common/IERC20Custom.sol";
+import "../Unitls//ReentrancyGuard.sol";
+import "../Comment/TransferHelper.sol";
+import "../Comment/IUniswapV2Factory.sol";
+import "../Comment/IPresaleLockForwarder.sol";
+import "../Comment/IWETH.sol";
+import "../Comment/IPresaleSettings.sol";
+import "../Comment/IERC20Custom.sol";
 
 contract Presale01 is ReentrancyGuard {
     struct PresaleInfo {
@@ -307,12 +307,15 @@ contract Presale01 is ReentrancyGuard {
         BuyerInfo storage buyer = BUYERS[msg.sender];
         uint256 rateWithdrawAfter;
         uint256 currentTime;
+
         if (block.timestamp > VESTING_PERIOD.maxPeriod) {
             currentTime = VESTING_PERIOD.maxPeriod;
         } else {
             currentTime = block.timestamp;
         }
+
         uint256 tokensOwed = buyer.tokensOwed;
+
         if (VESTING_PERIOD.firstUnlockRate == 100) {
             require(
                 buyer.totalTokenWithdraw != tokensOwed,
@@ -359,8 +362,7 @@ contract Presale01 is ReentrancyGuard {
     function userWithdrawBaseTokens() external nonReentrant {
         require(presaleStatus() == 3, "NOT FAILED"); // FAILED
         BuyerInfo storage buyer = BUYERS[msg.sender];
-        require(!buyer.isWithdrawnBase, "NOTHING TO REFUND");
-
+        require(!buyer.isWitchdrawnBase, "NOTHING TO REFUND");
         STATUS.TOTAL_BASE_WITHDRAWN += buyer.baseDeposited;
         TransferHelper.safeTransferBaseToken(
             address(PRESALE_INFO.B_TOKEN),
@@ -414,7 +416,7 @@ contract Presale01 is ReentrancyGuard {
                 STATUS.TOTAL_BASE_COLLECTED,
                 !PRESALE_INFO.PRESALE_IN_ETH
             );
-
+            
             // send all token
             uint256 tokenBalance = PRESALE_INFO.S_TOKEN.balanceOf(address(this));
             TransferHelper.safeTransfer(

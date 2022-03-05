@@ -161,7 +161,6 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         _afterTokenTransfer(account, address(0), amount);
     }
 
-
     function _beforeTokenTransfer(
         address from,
         address to,

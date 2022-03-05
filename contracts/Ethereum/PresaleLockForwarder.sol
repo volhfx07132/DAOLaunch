@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "../common/IERC20Custom.sol";
-import "../common/TransferHelper.sol";
-import "../common/IPresaleFactory.sol";
-import "../common/IUniswapV2Locker.sol";
-import "../common/IUniswapV2Factory.sol";
-import "../common/IUniswapV2Pair.sol";
+import "../Unitls/Ownable.sol";
+import "../Comment/IERC20Custom.sol";
+import "../Comment/TransferHelper.sol";
+import "../Comment/IPresaleFactory.sol";
+import "../Comment/IUniswapV2Locker.sol";
+import "../Comment/IUniswapV2Factory.sol";
+import "../Comment/IUniswapV2Pair.sol";
 
 contract PresaleLockForwarder is Ownable {
     IPresaleFactory public PRESALE_FACTORY;

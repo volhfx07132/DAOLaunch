@@ -5,14 +5,14 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "../common/TransferHelper.sol";
-import "../common/IUniswapV2Pair.sol";
-import "../common/IMigrator.sol";
-import "../common/IUniswapV2Factory.sol";
-import "../common/IERCBurn.sol";
+import "../Unitls/Ownable.sol";
+import "../Unitls/ReentrancyGuard.sol";
+import "../Unitls/EnumerableSet.sol";
+import "../Comment/TransferHelper.sol";
+import "../Comment/IUniswapV2Pair.sol";
+import "../Comment/IMigrator.sol";
+import "../Comment/IUniswapV2Factory.sol";
+import "../Comment/IERCBurn.sol";
 
 
 contract UniswapV2Locker is Ownable, ReentrancyGuard {

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "../common/IERC20Custom.sol";
+import "../Unitls/Ownable.sol";
+import "../Comment/IERC20Custom.sol";
 import "./Presale01.sol";
-import "../common/TransferHelper.sol";
-import "../common/PresaleHelper.sol";
-import "../common/IPresaleFactory.sol";
-import "../common/IUniswapV2Locker.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "../Comment/TransferHelper.sol";
+import "../Comment/PresaleHelper.sol";
+import "../Comment/IPresaleFactory.sol";
+import "../Comment/IUniswapV2Locker.sol";
+import "../Unitls/EnumerableSet.sol";
 
 contract PresaleGenerator01 is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
