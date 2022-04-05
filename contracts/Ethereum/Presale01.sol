@@ -362,7 +362,7 @@ contract Presale01 is ReentrancyGuard {
     function userWithdrawBaseTokens() external nonReentrant {
         require(presaleStatus() == 3, "NOT FAILED"); // FAILED
         BuyerInfo storage buyer = BUYERS[msg.sender];
-        require(!buyer.isWitchdrawnBase, "NOTHING TO REFUND");
+        require(!buyer.isWithdrawnBase, "NOTHING TO REFUND");
         STATUS.TOTAL_BASE_WITHDRAWN += buyer.baseDeposited;
         TransferHelper.safeTransferBaseToken(
             address(PRESALE_INFO.B_TOKEN),
@@ -463,6 +463,7 @@ contract Presale01 is ReentrancyGuard {
         // transfer fees
         uint256 DAOLaunchTokenFee = (STATUS.TOTAL_TOKENS_SOLD *
             PRESALE_FEE_INFO.DAOLAUNCH_TOKEN_FEE) / 1000;
+            
         if (DAOLaunchBaseFee > 0) {
             TransferHelper.safeTransferBaseToken(
                 address(PRESALE_INFO.B_TOKEN),
