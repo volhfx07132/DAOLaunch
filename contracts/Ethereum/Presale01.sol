@@ -71,6 +71,7 @@ contract Presale01 is ReentrancyGuard {
         uint256 unlockRateEachTime;
         uint256 maxPeriod;
     }
+
     //Strust
     PresaleInfo private PRESALE_INFO;
     PresaleFeeInfo public PRESALE_FEE_INFO;
@@ -151,14 +152,15 @@ contract Presale01 is ReentrancyGuard {
         uint8 _addLP
     ) external {
         require(msg.sender == PRESALE_GENERATOR, "FORBIDDEN");
-
         STATUS.WHITELIST_ONLY = is_white_list;
         CALLER = _caller;
+        // Change spec of token Vesting - Update contract presale
         VESTING_PERIOD.firstDistributionType = data[0];
         VESTING_PERIOD.firstUnlockRate = data[1];
         VESTING_PERIOD.distributionInterval = data[2];
         VESTING_PERIOD.unlockRateEachTime = data[3];
         VESTING_PERIOD.maxPeriod = data[4];
+
         PRESALE_INFO.ADD_LP = _addLP;
     }
 
@@ -253,6 +255,7 @@ contract Presale01 is ReentrancyGuard {
 
         BuyerInfo storage buyer = BUYERS[msg.sender];
         uint256 amount_in = PRESALE_INFO.PRESALE_IN_ETH ? msg.value : _amount;
+        // Check amount_in great then value of MIN_SPEND_PER_BUYER
         require(
             amount_in >= PRESALE_INFO.MIN_SPEND_PER_BUYER,
             "NOT ENOUGH VALUE"
@@ -268,18 +271,20 @@ contract Presale01 is ReentrancyGuard {
             (10**uint256(PRESALE_INFO.B_TOKEN.decimals()));
         require(tokensSold > 0, "ZERO TOKENS");
         if (buyer.baseDeposited == 0) {
+        // Imcrement buyer onr unit when baseDepositOfBuyter == 0    
             STATUS.NUM_BUYERS++;
         }
         buyer.baseDeposited += amount_in;
         buyer.tokensOwed += tokensSold;
         STATUS.TOTAL_BASE_COLLECTED += amount_in;
         STATUS.TOTAL_TOKENS_SOLD += tokensSold;
-
-        // return unused ETH
+        // return unused ETH 
         if (PRESALE_INFO.PRESALE_IN_ETH && amount_in < msg.value) {
+        // User transfer amount token for presale    
             payable(msg.sender).transfer(msg.value - amount_in);
         }
         // deduct non ETH token from user
+        // If not fee of presale is not ETH
         if (!PRESALE_INFO.PRESALE_IN_ETH) {
             TransferHelper.safeTransferFrom(
                 address(PRESALE_INFO.B_TOKEN),
@@ -292,56 +297,78 @@ contract Presale01 is ReentrancyGuard {
 
     // withdraw presale tokens
     // percentile withdrawls allows fee on transfer or rebasing tokens to still work
-    function userWithdrawTokens() external nonReentrant {
+    // User with draw token when presale success
+    function userWithdrawTokens() external nonReentrant {  
+        // User with draw token success  
+        // Check presaleStatus of presale equal 2 => Status success
         require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
+        // Check block.timeStamp of block great then firstDistributionType
+        // Check time great then
         require(
             block.timestamp >= VESTING_PERIOD.firstDistributionType,
             "NOT NOW"
         );
+    // Check number token sale great then number token withdraw    
+    // Check TOTAL_TOKENS_SOLD - TOTAL_TOKEN_WITHDRAW > 0
         require(
-            STATUS.TOTAL_TOKENS_SOLD - STATUS.TOTAL_TOKENS_WITHDRAWN > 0,
+            STATUS.TOTAL_TOKENS_SOLD - STATUS.TOTAL_TOKENS_WITHDRAW > 0,
             "ALL TOKEN HAS BEEN WITHDRAWN"
         );
+    // Check transtion of chain mode
+    // Check status ADD_LP != 2 => different Off_Chain -> On_Chain or distribution
         require(PRESALE_INFO.ADD_LP != 2, "OFF-CHAIN MODE");
-
+    // Get information of buyer through BUYERS[msg.sender]    
         BuyerInfo storage buyer = BUYERS[msg.sender];
+    // Set rateWithdrowAfter    
         uint256 rateWithdrawAfter;
+    // Save currentTime    
         uint256 currentTime;
-
+    // Check block.timeswap great then max periiod
         if (block.timestamp > VESTING_PERIOD.maxPeriod) {
+    // This right => set currentTime equal maxPeriod (time)                
             currentTime = VESTING_PERIOD.maxPeriod;
         } else {
+    // This wrong => currentTime < VESTING_PERIOD.maxPeriod        
             currentTime = block.timestamp;
-        }
-
+        }    
+    // Get owner token of buyer = buyer.tokensOwned
         uint256 tokensOwed = buyer.tokensOwed;
-
+    // If VESTING_PERIOP.firstUnlockRate equal 100 => Fully
         if (VESTING_PERIOD.firstUnlockRate == 100) {
+    // Check total token with draw different tokenOwned    
+    // else => Already withdraw all  
             require(
                 buyer.totalTokenWithdraw != tokensOwed,
                 "Already withdraw all"
             );
+    // Set rate with draw after eq
             rateWithdrawAfter = 100;
         } else {
+    // Calculate spentCycles between Current time and first distribution, all / distributionInterval
             uint256 spentCycles = (currentTime -
                 VESTING_PERIOD.firstDistributionType) /
                 VESTING_PERIOD.distributionInterval; // (m' - m0)/k
+            // Not yet withdrow token 
             if (buyer.lastWithdraw == 0) {
+            // Get data time     
                 rateWithdrawAfter =
                     spentCycles *
                     VESTING_PERIOD.unlockRateEachTime +
                     VESTING_PERIOD.firstUnlockRate; //x + spentCycles*y
             } else {
+            // Get current time when buyer withdraw some time     
                 uint256 lastSpentCycles = (buyer.lastWithdraw -
                     VESTING_PERIOD.firstDistributionType) /
                     VESTING_PERIOD.distributionInterval; // (LD - M0)/k
-                rateWithdrawAfter =
+                rateWithdrawAfter = 
                     (spentCycles - lastSpentCycles) *
                     VESTING_PERIOD.unlockRateEachTime; //(spentCycles - lastSpentCycles)*y
                 require(rateWithdrawAfter > 0, "INVALID MOMENT"); // SUCCESS
             }
         }
+        // Set buyer -> lastTimeDraw equal current time
         buyer.lastWithdraw = currentTime;
+        // Calculate amount buyer can with draw 
         uint256 amountWithdraw = (tokensOwed * rateWithdrawAfter) / 100;
 
         if (buyer.totalTokenWithdraw + amountWithdraw > buyer.tokensOwed) {
@@ -350,8 +377,9 @@ contract Presale01 is ReentrancyGuard {
 
         STATUS.TOTAL_TOKENS_WITHDRAWN += amountWithdraw;
         buyer.totalTokenWithdraw += amountWithdraw; // update total token withdraw of buyer address
+        // Backtoken ETH for user
         TransferHelper.safeTransfer(
-            address(PRESALE_INFO.S_TOKEN),
+            address(PRESALE_INFO.S_TOKEN), // Token ERC20
             msg.sender,
             amountWithdraw
         );
@@ -359,58 +387,74 @@ contract Presale01 is ReentrancyGuard {
 
     // on presale failure
     // percentile withdrawls allows fee on transfer or rebasing tokens to still work
+    // User with draw base token (ERC20 OF presale) 
+    
     function userWithdrawBaseTokens() external nonReentrant {
+        // Check status equal 3
         require(presaleStatus() == 3, "NOT FAILED"); // FAILED
+        // GET information of user BUYERS[msg.sender]
         BuyerInfo storage buyer = BUYERS[msg.sender];
+        // Check status of isWithdrawnBase = false => Not yet withDraw
         require(!buyer.isWithdrawnBase, "NOTHING TO REFUND");
+        // Set status of TOTAL_BASE_WITHDRAWN
         STATUS.TOTAL_BASE_WITHDRAWN += buyer.baseDeposited;
+        // 
         TransferHelper.safeTransferBaseToken(
-            address(PRESALE_INFO.B_TOKEN),
-            payable(msg.sender),
-            buyer.baseDeposited,
-            !PRESALE_INFO.PRESALE_IN_ETH
+            address(PRESALE_INFO.B_TOKEN), // From: ETH when user presale token
+            payable(msg.sender),           // Payable
+            buyer.baseDeposited,           // Number token baseDeposited
+            !PRESALE_INFO.PRESALE_IN_ETH   // Status of presale_in_eth = false -> Not must be token ETH 
         );
         buyer.isWithdrawnBase = true;
     }
 
     // on presale failure
     // allows the owner to withdraw the tokens they sent for presale & initial liquidity
+    // Admin create presale token failure 
     function ownerRefundTokens() external onlyPresaleOwner {
+    // Status success     
         require(presaleStatus() == 3, "NOT FAILED"); // FAILED
+    // Check is_owner_withdraw
         require(!STATUS.IS_OWNER_WITHDRAWN, "NOTHING TO WITHDRAW");
+    // transfer token ERC20 for owner of presale
         TransferHelper.safeTransfer(
-            address(PRESALE_INFO.S_TOKEN),
+            address(PRESALE_INFO.S_TOKEN), // Back token ERC20 for owner
             PRESALE_INFO.PRESALE_OWNER,
             PRESALE_INFO.S_TOKEN.balanceOf(address(this))
         );
+    // Set with draw equal true    
         STATUS.IS_OWNER_WITHDRAWN = true;
-
-        // send eth fee to owner
-        PRESALE_INFO.PRESALE_OWNER.transfer(
-            PRESALE_SETTINGS.getEthCreationFee()
+    // Send eth fee to owner, send presale for owner
+        PRESALE_INFO.PRESALE_OWNER.transfer(  // transfer fee create foe user create token
+            PRESALE_SETTINGS.getEthCreationFee() 
         );
+    //     
     }
 
     // on presale success, this is the final step to end the presale, lock liquidity and enable withdrawls of the sale token.
     // This function does not use percentile distribution. Rebasing mechanisms, fee on transfers, or any deflationary logic
     // are not taken into account at this stage to ensure stated liquidity is locked and the pool is initialised according to
     // the presale parameters and fixed prices.
+    // Sale presale success => With draw all data in presale
 
     function listOnUniswap() external onlyCaller {
+        // Check time great then listtinf time
         require(
             block.timestamp >= PRESALE_INFO.UNISWAP_LISTING_TIME,
             "Call listOnUniswap too early"
         );
+        // Check sta7tus need equal 2 => Status success
         require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
+        // Check not yet transaction_fee
         require(!STATUS.IS_TRANSFERED_FEE, "TRANSFERED FEE");
-        // require(PRESALE_INFO.LIQUIDITY_PERCENT > 0, "LIQUIDITY_PERCENT = 0");
-
+        // Require(PRESALE_INFO.LIQUIDITY_PERCENT > 0, "LIQUIDITY_PERCENT = 0");
+        // ADD_LP = 2 is off chian mode
         if (PRESALE_INFO.ADD_LP == 2) {
             // off-chain mode
             // send all to DAOLaunch, remaining listing fee to presale owner
-
             // send all base token
             TransferHelper.safeTransferBaseToken(
+            //  Transfer TOTAL_BASE_COLLECTED from B_TOKEN to BASE_FEE_ADDRESS
                 address(PRESALE_INFO.B_TOKEN),
                 PRESALE_FEE_INFO.BASE_FEE_ADDRESS,
                 STATUS.TOTAL_BASE_COLLECTED,
@@ -418,36 +462,38 @@ contract Presale01 is ReentrancyGuard {
             );
             
             // send all token
+            // Get number token of: balanceOf (address(this) = address of smart contract)
             uint256 tokenBalance = PRESALE_INFO.S_TOKEN.balanceOf(address(this));
+            // Transfer tokenBalance from S_TOKEN to TOKEN_FEE_ADDRESS (TOKEN_FEE_COLLECTED)
             TransferHelper.safeTransfer(
                 address(PRESALE_INFO.S_TOKEN),
                 PRESALE_FEE_INFO.TOKEN_FEE_ADDRESS,
                 tokenBalance
             );
-
             // send transaction fee
+            // Calculate txFee
             uint256 txFee = tx.gasprice * GAS_LIMIT.transferPresaleOwner;
+            // txFee less then PRESALE_SETTINGS
             require(txFee <= PRESALE_SETTINGS.getEthCreationFee());
+            // Transfer fee to CALLER
             CALLER.transfer(txFee);
+            // 
             PRESALE_INFO.PRESALE_OWNER.transfer(
                 PRESALE_SETTINGS.getEthCreationFee() - txFee
             );
             return;
         }
-
+        // Get BaseFee of token Token Fee 
         uint256 DAOLaunchBaseFee = (STATUS.TOTAL_BASE_COLLECTED *
             PRESALE_FEE_INFO.DAOLAUNCH_BASE_FEE) / 1000;
-        // base token liquidity
+        // base token liquidity 
         uint256 baseLiquidity = ((STATUS.TOTAL_BASE_COLLECTED -
             DAOLaunchBaseFee) * PRESALE_INFO.LIQUIDITY_PERCENT) / 1000;
-        if (
-            PRESALE_INFO.ADD_LP == 0 &&
-            baseLiquidity > 0 &&
-            PRESALE_INFO.PRESALE_IN_ETH
-        ) {
+        // Deposit baseLiquidity to address WETH
+        if (PRESALE_INFO.ADD_LP == 0 && baseLiquidity > 0 && PRESALE_INFO.PRESALE_IN_ETH) {
             WETH.deposit{value: baseLiquidity}();
         }
-
+        // Transfer baseLiquidity from B_TOKEN to PRESALE_LOCK_FORWARDER
         if (PRESALE_INFO.ADD_LP == 0 && baseLiquidity > 0) {
             TransferHelper.safeApprove(
                 address(PRESALE_INFO.B_TOKEN),
@@ -456,49 +502,58 @@ contract Presale01 is ReentrancyGuard {
             );
         }
 
-        // sale token liquidity
+        // Sale token liquidity
+        // Get number tokenLiquidity
         uint256 tokenLiquidity = (baseLiquidity * PRESALE_INFO.LISTING_RATE) /
             (10**uint256(PRESALE_INFO.B_TOKEN.decimals()));
 
         // transfer fees
+        // Get DAOLaunchTokenFee 
         uint256 DAOLaunchTokenFee = (STATUS.TOTAL_TOKENS_SOLD *
             PRESALE_FEE_INFO.DAOLAUNCH_TOKEN_FEE) / 1000;
-            
+        // Check DAOLaunchTokenFee great then 0    
         if (DAOLaunchBaseFee > 0) {
+        // Transfer DAOLaunchTokenFee from B_TOKEN to BASE_FEE_ADDRESS 
             TransferHelper.safeTransferBaseToken(
-                address(PRESALE_INFO.B_TOKEN),
+                address(PRESALE_INFO.B_TOKEN), 
                 PRESALE_FEE_INFO.BASE_FEE_ADDRESS,
                 DAOLaunchBaseFee,
-                !PRESALE_INFO.PRESALE_IN_ETH
+                !PRESALE_INFO.BASE_FEE_ADDRESS
             );
         }
+        // Check DAOLaunchTokenFee great then 0
         if (DAOLaunchTokenFee > 0) {
+        // Transfer to TOKEN_FEE_ADDRESS
             TransferHelper.safeTransfer(
                 address(PRESALE_INFO.S_TOKEN),
                 PRESALE_FEE_INFO.TOKEN_FEE_ADDRESS,
                 DAOLaunchTokenFee
             );
         }
+        // Set IS_TRANSFERED_FEE is true
         STATUS.IS_TRANSFERED_FEE = true;
 
         // if use escrow or percent = 0%
+        // Mode onChain 
+        // Check ADD_LD = 1
         if (PRESALE_INFO.ADD_LP == 1 || baseLiquidity == 0) {
-            // transfer fee to DAOLaunch
+            // transfer fee to DAOLaunch 
             uint256 txFee = tx.gasprice * GAS_LIMIT.transferPresaleOwner;
-            require(txFee <= PRESALE_SETTINGS.getEthCreationFee());
-
+            require(txFee <= PRESALE_SETTINGS.getEthCreationFee());           
             if (baseLiquidity == 0) {
                 // send fee to project owner
+                // Transfer fee transaction from address(this) to PRESALE_OWNER
                 PRESALE_INFO.PRESALE_OWNER.transfer(
                     PRESALE_SETTINGS.getEthCreationFee() - txFee
                 );
             } else {
                 // send fee to DAOLaunch
+                // Transfer fee from address(this) to BASE_FEE_ADDRESS
                 PRESALE_FEE_INFO.BASE_FEE_ADDRESS.transfer(
                     PRESALE_SETTINGS.getEthCreationFee() - txFee
                 );
             }
-
+            
             // send transaction fee
             CALLER.transfer(txFee);
         } else {
@@ -507,6 +562,7 @@ contract Presale01 is ReentrancyGuard {
             require(txFee <= PRESALE_SETTINGS.getEthCreationFee());
 
             // send fee to DAOLaunch
+            // transfer Fee to address(this) to BASE_FEE_ADDRESS
             PRESALE_FEE_INFO.BASE_FEE_ADDRESS.transfer(
                 PRESALE_SETTINGS.getEthCreationFee() - txFee
             );
@@ -516,13 +572,15 @@ contract Presale01 is ReentrancyGuard {
         }
 
         if (PRESALE_INFO.ADD_LP == 1) {
-            // send liquidity to DAOLaunch
+            // Send liquidity to DAOLaunch
+            // Transfer baseLiquidity from address of B_TOKEN to BASE_FEE_ADDRESS  
             TransferHelper.safeTransferBaseToken(
                 address(PRESALE_INFO.B_TOKEN),
                 PRESALE_FEE_INFO.BASE_FEE_ADDRESS,
                 baseLiquidity,
                 !PRESALE_INFO.PRESALE_IN_ETH
             );
+            // Transfer tokenLiquidity from S_TOKEN to BASE_FEE_ADDRESS
             TransferHelper.safeTransfer(
                 address(PRESALE_INFO.S_TOKEN),
                 PRESALE_FEE_INFO.BASE_FEE_ADDRESS,
@@ -531,20 +589,23 @@ contract Presale01 is ReentrancyGuard {
         } else {
             if (baseLiquidity > 0) {
                 // Fail the presale if the pair exists and contains presale token liquidity
+                // Get pair of token Token ERC20
                 if (
                     PRESALE_LOCK_FORWARDER.uniswapPairIsInitialised(
                         address(PRESALE_INFO.S_TOKEN),
                         address(PRESALE_INFO.B_TOKEN)
                     )
                 ) {
+                // Set uniwswap equal true    
                     STATUS.LIST_ON_UNISWAP = true;
-
+                // Tranfer baseLiquidity from address of smart contract B_TOKEN to PRESALE_OWNER
                     TransferHelper.safeTransferBaseToken(
                         address(PRESALE_INFO.B_TOKEN),
                         PRESALE_INFO.PRESALE_OWNER,
                         baseLiquidity,
                         !PRESALE_INFO.PRESALE_IN_ETH
                     );
+                // Transfer baseLiquidity from address of smart contract S_TOKEN to PRESALE_OWNER    
                     TransferHelper.safeTransfer(
                         address(PRESALE_INFO.S_TOKEN),
                         PRESALE_INFO.PRESALE_OWNER,
@@ -573,10 +634,12 @@ contract Presale01 is ReentrancyGuard {
     }
 
     function ownerWithdrawTokens() external nonReentrant onlyPresaleOwner {
+    // Check status IS_OWNER_WITHDRAWN   
         require(!STATUS.IS_OWNER_WITHDRAWN, "GENERATION COMPLETE");
+    // Check presale must equal 2   
         require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
+    // Check ADD_LP different offchain
         require(PRESALE_INFO.ADD_LP != 2, "OFF-CHAIN MODE");
-
         uint256 DAOLaunchBaseFee = (STATUS.TOTAL_BASE_COLLECTED *
             PRESALE_FEE_INFO.DAOLAUNCH_BASE_FEE) / 1000;
         uint256 baseLiquidity = ((STATUS.TOTAL_BASE_COLLECTED -
