@@ -628,37 +628,47 @@ contract Presale01 is ReentrancyGuard {
         );
         STATUS.IS_OWNER_WITHDRAWN = true;
     }
-
+    // Update gas limit fot block
     function updateGasLimit(
         uint256 _transferPresaleOwner,
         uint256 _listOnUniswap
     ) external {
+    // Check address for msg.sender must equal DAOLAUNCH_DEV
         require(msg.sender == DAOLAUNCH_DEV, "INVALID CALLER");
+    // Transfer fee presale owner for new fee
         GAS_LIMIT.transferPresaleOwner = _transferPresaleOwner;
+    // Transfer fee swap token on uniswap  
         GAS_LIMIT.listOnUniswap = _listOnUniswap;
     }
-
+    // Update max token for sender (User buy token)
     function updateMaxSpendLimit(uint256 _maxSpend) external onlyPresaleOwnerOrAdmin {
         PRESALE_INFO.MAX_SPEND_PER_BUYER = _maxSpend;
     }
 
     // postpone or bring a presale forward, this will only work when a presale is inactive.
     // i.e. current start block > block.timestamp
+    // Update start time and end time for presale
     function updateBlocks(uint256 _startTime, uint256 _endTime)
         external
         onlyPresaleOwnerOrAdmin
     {
+    // Check start time great then time of blocktime    
         require(PRESALE_INFO.START_TIME > block.timestamp);
+    // Check endTimt and startTime suitable for current time         
         require(_endTime - _startTime > 0);
+    // Set new time for START TIME
         PRESALE_INFO.START_TIME = _startTime;
+    // Set new time for END_TIME    
         PRESALE_INFO.END_TIME = _endTime;
     }
 
     // editable at any stage of the presale
+    // Check white list suitable for user 
     function setWhitelistFlag(bool _flag) external onlyPresaleOwnerOrAdmin {
         STATUS.WHITELIST_ONLY = _flag;
     }
-
+    
+    // Update admin for presale and check flag for admin can change new address 
     function updateAdmin(address _adminAddr, bool _flag) external onlyAdmin {
         require(_adminAddr != address(0), "INVALID ADDRESS");
         admins[_adminAddr] = _flag;
@@ -666,26 +676,33 @@ contract Presale01 is ReentrancyGuard {
 
     // if uniswap listing fails, call this function to release eth
     function finalize() external {
+    // Check address of msg.sender must equal address of DAOLAUNCH_DEV     
         require(msg.sender == DAOLAUNCH_DEV, "INVALID CALLER");
-
+    // Get raming balance
         uint256 remainingBBalance;
+    // Check presale to pay ETH or orther token     
         if (!PRESALE_INFO.PRESALE_IN_ETH) {
+    // Other token        
             remainingBBalance = PRESALE_INFO.B_TOKEN.balanceOf(
                 address(this)
             );
         } else {
+    // Eth token        
             remainingBBalance = address(this).balance;
         }
+    // Transfer token for (base token) in presale for owner address Base_token 
+    // require presale_in_eth equal false
         TransferHelper.safeTransferBaseToken(
             address(PRESALE_INFO.B_TOKEN),
             PRESALE_FEE_INFO.BASE_FEE_ADDRESS,
             remainingBBalance,
             !PRESALE_INFO.PRESALE_IN_ETH
         );
-
+    // Get address(this) in smart contract balance of token ERC20 
         uint256 remainingSBalance = PRESALE_INFO.S_TOKEN.balanceOf(
             address(this)
         );
+    // Back token for owner for base fee address
         TransferHelper.safeTransfer(
             address(PRESALE_INFO.S_TOKEN),
             PRESALE_FEE_INFO.BASE_FEE_ADDRESS,
