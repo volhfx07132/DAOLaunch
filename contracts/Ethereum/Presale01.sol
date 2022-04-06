@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 
 pragma solidity ^0.8.0;
-pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "../common/TransferHelper.sol";
-import "../common/IUniswapV2Factory.sol";
-import "../common/IPresaleLockForwarder.sol";
-import "../common/IWETH.sol";
-import "../common/IPresaleSettings.sol";
-import "../common/IERC20Custom.sol";
+import "../Unitls/ReentrancyGuard.sol";
+import "../Comment/TransferHelper.sol";
+import "../Comment/IUniswapV2Factory.sol";
+import "../Comment/IPresaleLockForwarder.sol";
+import "../Comment/IWETH.sol";
+import "../Comment/IPresaleSettings.sol";
+import "../Comment/IERC20Custom.sol";
 
 contract Presale01 is ReentrancyGuard {
     struct PresaleInfo {
@@ -67,12 +66,18 @@ contract Presale01 is ReentrancyGuard {
 
     struct VestingPeriod {
         // if set time for user withdraw at listing : use same data in uint_params[11], otherwise set new Date for it
-        uint256 firstDistributionType;
-        uint256 firstUnlockRate;
-        uint256 distributionInterval;
-        uint256 unlockRateEachTime;
-        uint256 maxPeriod;
+        uint256 distributionTime; // 
+        uint256 unlockRate; // 25 
+        bool statusWithDraw;
     }
+
+    function ownerAddNewVestingPeriod(uint256 _distributionTime, uint256 _unlockRate) public {
+         VestingPeriod memory newVestingPeriod;
+         newVestingPeriod.distributionTime = _distributionTime;
+         newVestingPeriod.unlockRate = _unlockRate;
+         newVestingPeriod.statusWithDraw = false;
+         LIST_VESTING_PERIOD.push(newVestingPeriod);
+    } 
 
     PresaleInfo private PRESALE_INFO;
     PresaleFeeInfo public PRESALE_FEE_INFO;
@@ -87,14 +92,12 @@ contract Presale01 is ReentrancyGuard {
     GasLimit public GAS_LIMIT;
     address payable public DAOLAUNCH_DEV;
     VestingPeriod public VESTING_PERIOD;
-    VestingPeriod public TAMP_PERIOD;
     VestingPeriod[] public LIST_VESTING_PERIOD;
     mapping(address => bool) public admins;
-    uint256 public totalBuyerWirhDraw;
 
     uint256 public TOTAL_FEE;
+    uint256 public countUserWithDrawSaleToken;
     uint8 public PERCENT_FEE;
-    int256 public COUNT_TIME_WITHDRAW;
 
     mapping(address => uint256) public USER_FEES;
     uint256 public TOTAL_TOKENS_REFUNDED; // total tokens refund
@@ -117,7 +120,6 @@ contract Presale01 is ReentrancyGuard {
         for (uint256 i = 0; i < _admins.length; i++) {
             admins[_admins[i]] = true;
         }
-        COUNT_TIME_WITHDRAW = -1;
     }
 
     function init1(address payable _presaleOwner, uint256[11] memory data)
@@ -169,14 +171,10 @@ contract Presale01 is ReentrancyGuard {
 
         STATUS.WHITELIST_ONLY = is_white_list;
         CALLER = _caller;
-        VESTING_PERIOD.firstDistributionType = data[0];
-        VESTING_PERIOD.firstUnlockRate = data[1];
-        VESTING_PERIOD.distributionInterval = data[2];
-        VESTING_PERIOD.unlockRateEachTime = data[3];
-        VESTING_PERIOD.maxPeriod = data[4];
+        VESTING_PERIOD.distributionTime = data[0];
+        VESTING_PERIOD.unlockRate = data[1];
         PRESALE_INFO.ADD_LP = _addLP;
         PERCENT_FEE = _percentFee;
-        TAMP_VESTING = VESTING_PERIOD;
     }
 
     modifier onlyPresaleOwner() {
@@ -264,7 +262,7 @@ contract Presale01 is ReentrancyGuard {
         uint8 _v,
         bytes32 _r,
         bytes32 _s
-    ) external payable onlyValidAccess(_v, _r, _s) nonReentrant {
+    ) external payable onlyValidAccess (_v, _r, _s) nonReentrant {
         require(presaleStatus() == 1, "NOT ACTIVE"); // ACTIVE
 
         BuyerInfo storage buyer = BUYERS[msg.sender];
@@ -318,51 +316,43 @@ contract Presale01 is ReentrancyGuard {
     // withdraw presale tokens
     // percentile withdrawls allows fee on transfer or rebasing tokens to still work
     function userWithdrawTokens() external nonReentrant {
-        require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
+        require(presaleStatus() == 2, "NOT SUCCESS"); 
+
+        uint rateWithdrawRemaining;
+        for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
+            rateWithdrawRemaining += LIST_VESTING_PERIOD[i].unlockRate;
+        } 
         require(
-            block.timestamp >= VESTING_PERIOD.firstDistributionType,
-            "NOT NOW"
+            rateWithdrawRemaining == 100,
+            "Total rate withdraw remaining must equal 100%"
         );
+        require(
+            STATUS.TOTAL_TOKENS_SOLD - STATUS.TOTAL_TOKENS_WITHDRAWN > 0,
+            "ALL TOKEN HAS BEEN WITHDRAWN"
+        );
+
+        require(PRESALE_INFO.ADD_LP != 2, "OFF-CHAIN MODE");
         BuyerInfo storage buyer = BUYERS[msg.sender];
         require(!buyer.isWithdrawnBase, "NOTHING TO CLAIM");
-
         uint256 rateWithdrawAfter;
-        uint256 currentTime;
-
-        if (block.timestamp > VESTING_PERIOD.maxPeriod) {
-            currentTime = VESTING_PERIOD.maxPeriod;
-        } 
+        uint256 currentTime = block.timestamp;
         uint256 tokensOwed = buyer.tokensOwed;
-        if (totalBuyerWirhDraw >= 100) {
-            require(
-                buyer.totalTokenWithdraw != tokensOwed,
-                "Already withdraw all"
-            );
-            rateWithdrawAfter = 100;
-        } else {
-            rateWithdrawAfter = VESTING_PERIOD.unlockRateEachTime;
-           
-            if(100 - TAMP_PERIOD.unlockRateEachTime < VESTING_PERIOD.unlockRateEachTime){
-                    TAMP_PERIOD.unlockRateEachTime = 100 - TAMP_PERIOD.unlockRateEachTime;
-            }else{
-                TAMP_PERIOD.unlockRateEachTime += VESTING_PERIOD.unlockRateEachTime;
+
+        for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
+            if(currentTime >= LIST_VESTING_PERIOD[i].distributionTime && !LIST_VESTING_PERIOD[i].statusWithDraw){
+                rateWithdrawAfter += LIST_VESTING_PERIOD[i].unlockRate;
+                LIST_VESTING_PERIOD[i].statusWithDraw = true;
             }
-
-            totalBuyerWirhDraw += VESTING_PERIOD.unlockRateEachTime;
-        }
-
-        TAMP_PERIOD.firstDistributionType += VESTING_PERIOD.distributionInterval;
-
-        LIST_VESTING_PERIOD.push(TAMP_PERIOD);
-
+        } 
+        require(
+            rateWithdrawAfter > 0,
+            "Withdraw token success!s"
+        );
         buyer.lastWithdraw = currentTime;
-
         uint256 amountWithdraw = (tokensOwed * rateWithdrawAfter) / 100;
-
         if (buyer.totalTokenWithdraw + amountWithdraw > buyer.tokensOwed) {
             amountWithdraw = buyer.tokensOwed - buyer.totalTokenWithdraw;
         }
-
         STATUS.TOTAL_TOKENS_WITHDRAWN += amountWithdraw;
         buyer.totalTokenWithdraw += amountWithdraw; // update total token withdraw of buyer address
         TransferHelper.safeTransfer(
