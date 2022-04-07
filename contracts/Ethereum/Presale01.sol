@@ -306,26 +306,44 @@ contract Presale01 is ReentrancyGuard {
 
     // owner add new vesting period to LIST_VESTING_PERIOD array     
     function ownerAddNewVestingPeriod(uint256 _distributionTime, uint256 _unlockRate) public {
-         VestingPeriod memory newVestingPeriod;
-         newVestingPeriod.distributionTime = _distributionTime;
-         newVestingPeriod.unlockRate = _unlockRate;
-         newVestingPeriod.statusWithDraw = false;
-         LIST_VESTING_PERIOD.push(newVestingPeriod);
+        VestingPeriod memory newVestingPeriod;
+        newVestingPeriod.distributionTime = _distributionTime;
+        newVestingPeriod.unlockRate = _unlockRate;
+        newVestingPeriod.statusWithDraw = false;
+        if(LIST_VESTING_PERIOD.length > 0) {
+            uint256 lengthVestingPeriod = LIST_VESTING_PERIOD.length -1;
+            uint256 totalRateWithdraw;
+            for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
+                totalRateWithdraw += LIST_VESTING_PERIOD[i].unlockRate;
+            }
+            if(LIST_VESTING_PERIOD[lengthVestingPeriod].distributionTime < _distributionTime && 100 - totalRateWithdraw - _unlockRate >= 0){
+                LIST_VESTING_PERIOD.push(newVestingPeriod);
+            }else {
+                revert("Wrong distribution time or unlockRate overflow!");
+            }
+        }else{
+            LIST_VESTING_PERIOD.push(newVestingPeriod);
+        }
     } 
    
     // withdraw presale tokens
+    // Mua o hai gian doan => while list and anyonr not refund =>  
+    // userWithdrawDeposit
     // percentile withdrawls allows fee on transfer or rebasing tokens to still work
     function userWithdrawTokens() external nonReentrant {
         require(presaleStatus() == 2, "NOT SUCCESS"); 
 
         uint rateWithdrawRemaining;
+
         for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
             rateWithdrawRemaining += LIST_VESTING_PERIOD[i].unlockRate;
         } 
+        
         require(
             rateWithdrawRemaining == 100,
             "Total rate withdraw remaining must equal 100%"
         );
+
         require(
             STATUS.TOTAL_TOKENS_SOLD - STATUS.TOTAL_TOKENS_WITHDRAWN > 0,
             "ALL TOKEN HAS BEEN WITHDRAWN"
@@ -356,6 +374,7 @@ contract Presale01 is ReentrancyGuard {
         if (buyer.totalTokenWithdraw + amountWithdraw > buyer.tokensOwed) {
             amountWithdraw = buyer.tokensOwed - buyer.totalTokenWithdraw;
         }
+        
         STATUS.TOTAL_TOKENS_WITHDRAWN += amountWithdraw;
         buyer.totalTokenWithdraw += amountWithdraw; // update total token withdraw of buyer address
         TransferHelper.safeTransfer(
@@ -365,27 +384,38 @@ contract Presale01 is ReentrancyGuard {
         );
     }
 
-    // on presale failure
-    // percentile withdrawls allows fee on transfer or rebasing tokens to still work
+    // On presale failure
+    // Percentile withdrawls allows fee on transfer or rebasing tokens to still work
     function userWithdrawBaseTokens() external nonReentrant {
-        require(presaleStatus() == 3, "NOT FAILED"); // FAILED
+    // Check status of function presaleStatus return 3 (Status Failed)
+        require(presaleStatus() == 3, "NOT FAILED");
+    // Get information of buy on maooing BUYERS[msg.sender]   
         BuyerInfo storage buyer = BUYERS[msg.sender];
         require(!buyer.isWithdrawnBase, "NOTHING TO REFUND");
-
+    // Get satus of TOTAL_BASE_WITHDRAWN, add baseDeposited of buyer
         STATUS.TOTAL_BASE_WITHDRAWN += buyer.baseDeposited;
+    // Transfer base token (ETH, BNB) for user      
         TransferHelper.safeTransferBaseToken(
+    // Address of base token      
             address(PRESALE_INFO.B_TOKEN),
+    // Address of user(msg.sender) buy token of presale        
             payable(msg.sender),
+    // Number token to back for user       
             buyer.baseDeposited,
             !PRESALE_INFO.PRESALE_IN_ETH
         );
+    // Set isWithdrawnBase
         buyer.isWithdrawnBase = true;
     }
 
     // on presale failure
     // allows the owner to withdraw the tokens they sent for presale & initial liquidity
     function ownerRefundTokens() external onlyPresaleOwner {
+    // Check status of presaleStatus == 3 => Status not success   
         require(presaleStatus() == 3, "NOT FAILED"); // FAILED
+    // Check IS_OWNER_WITHDRAWN of owner with draw 
+    // => false -> not yet with draw
+    // => true -> has withdraw
         require(!STATUS.IS_OWNER_WITHDRAWN, "NOTHING TO WITHDRAW");
         TransferHelper.safeTransfer(
             address(PRESALE_INFO.S_TOKEN),
