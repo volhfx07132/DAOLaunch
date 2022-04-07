@@ -71,14 +71,6 @@ contract Presale01 is ReentrancyGuard {
         bool statusWithDraw;
     }
 
-    function ownerAddNewVestingPeriod(uint256 _distributionTime, uint256 _unlockRate) public {
-         VestingPeriod memory newVestingPeriod;
-         newVestingPeriod.distributionTime = _distributionTime;
-         newVestingPeriod.unlockRate = _unlockRate;
-         newVestingPeriod.statusWithDraw = false;
-         LIST_VESTING_PERIOD.push(newVestingPeriod);
-    } 
-
     PresaleInfo private PRESALE_INFO;
     PresaleFeeInfo public PRESALE_FEE_INFO;
     PresaleStatus public STATUS;
@@ -96,7 +88,6 @@ contract Presale01 is ReentrancyGuard {
     mapping(address => bool) public admins;
 
     uint256 public TOTAL_FEE;
-    uint256 public countUserWithDrawSaleToken;
     uint8 public PERCENT_FEE;
 
     mapping(address => uint256) public USER_FEES;
@@ -313,6 +304,15 @@ contract Presale01 is ReentrancyGuard {
         }
     }
 
+    // owner add new vesting period to LIST_VESTING_PERIOD array     
+    function ownerAddNewVestingPeriod(uint256 _distributionTime, uint256 _unlockRate) public {
+         VestingPeriod memory newVestingPeriod;
+         newVestingPeriod.distributionTime = _distributionTime;
+         newVestingPeriod.unlockRate = _unlockRate;
+         newVestingPeriod.statusWithDraw = false;
+         LIST_VESTING_PERIOD.push(newVestingPeriod);
+    } 
+   
     // withdraw presale tokens
     // percentile withdrawls allows fee on transfer or rebasing tokens to still work
     function userWithdrawTokens() external nonReentrant {
@@ -346,10 +346,13 @@ contract Presale01 is ReentrancyGuard {
         } 
         require(
             rateWithdrawAfter > 0,
-            "Withdraw token success!s"
+            "User withdraw All token success!"
         );
+
         buyer.lastWithdraw = currentTime;
+
         uint256 amountWithdraw = (tokensOwed * rateWithdrawAfter) / 100;
+
         if (buyer.totalTokenWithdraw + amountWithdraw > buyer.tokensOwed) {
             amountWithdraw = buyer.tokensOwed - buyer.totalTokenWithdraw;
         }
