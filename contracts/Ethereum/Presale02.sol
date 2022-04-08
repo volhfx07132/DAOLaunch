@@ -65,7 +65,7 @@ contract Presale01 is ReentrancyGuard {
         uint256 lastWithdraw; // day of the last withdrawing. If first time => = firstDistributionType
         uint256 totalTokenWithdraw; // number of tokens withdraw
         bool isWithdrawnBase;
-        uint256 timeToBuyerTokens;
+       uint256 timeToBuyerTokens;
 
         // bool isRefunded; // refund or claim
     }
@@ -77,11 +77,9 @@ contract Presale01 is ReentrancyGuard {
 
     struct VestingPeriod {
         // if set time for user withdraw at listing : use same data in uint_params[11], otherwise set new Date for it
-        uint256 firstDistributionType;
-        uint256 firstUnlockRate;
-        uint256 distributionInterval;
-        uint256 unlockRateEachTime;
-        uint256 maxPeriod;
+        uint256 distributionTime; // 
+        uint256 unlockRate; // 25 
+        bool statusWithDraw;
     }
 
     PresaleInfo private PRESALE_INFO;
@@ -97,6 +95,7 @@ contract Presale01 is ReentrancyGuard {
     GasLimit public GAS_LIMIT;
     address payable public DAOLAUNCH_DEV;
     VestingPeriod public VESTING_PERIOD;
+    VestingPeriod[] public LIST_VESTING_PERIOD;
     mapping(address => bool) public admins;
 
     uint256 public TOTAL_FEE;
@@ -175,21 +174,18 @@ contract Presale01 is ReentrancyGuard {
         address payable _caller,
         uint256[5] memory data,
         uint8 _addLP,
-        uint8 _percentFee,
-        uint8 precent_fee_status_anyone
+        uint8 _percentFee;
+        uint8 precent_fee_status_anyone;
     ) external {
         require(msg.sender == PRESALE_GENERATOR, "FORBIDDEN");
         STATUS.WHITELIST_ONLY = is_white_list;
         STATUS.WHITELIST_REPLACEMENT = is_white_replace;
         STATUS.SWITCH_ANYONE = is_switch_anyone;
         CALLER = _caller;
-        VESTING_PERIOD.firstDistributionType = data[0];
-        VESTING_PERIOD.firstUnlockRate = data[1];
-        VESTING_PERIOD.distributionInterval = data[2];
-        VESTING_PERIOD.unlockRateEachTime = data[3];
-        VESTING_PERIOD.maxPeriod = data[4];
+        VESTING_PERIOD.distributionTime = data[0];
+        VESTING_PERIOD.unlockRate = data[1];
         PRESALE_INFO.ADD_LP = _addLP;
-        PERCENT_FEE = _percentFee;
+        PERCENT_FEE = _percentFee;s
         PERCENT_FEE_STATUS_ANYONE = precent_fee_status_anyone;
     }
 
@@ -278,13 +274,14 @@ contract Presale01 is ReentrancyGuard {
         uint8 _v,
         bytes32 _r,
         bytes32 _s
-    ) external payable onlyValidAccess(_v, _r, _s) nonReentrant {
-        require(presaleStatus() == 1, "NOT ACTIVE"); // ACTIVEz
+    ) external payable onlyValidAccess (_v, _r, _s) nonReentrant {
+        require(presaleStatus() == 1, "NOT ACTIVE"); // ACTIVE
+
         BuyerInfo storage buyer = BUYERS[msg.sender];
         uint256 amount_in = PRESALE_INFO.PRESALE_IN_ETH ? msg.value : _amount;
         uint256 real_amount_in = amount_in;
-        uint256 fee = 0; 
-        // Anyone 
+        uint256 fee = 0;
+        
         if (!STATUS.WHITELIST_ONLY ) {
             real_amount_in = real_amount_in * (1000 - PRESALE_INFO.TIME_TO_SWITCH_ONYONE) / 1000;
             fee = amount_in - real_amount_in;
@@ -296,21 +293,19 @@ contract Presale01 is ReentrancyGuard {
                 }
             }
         }
+
         require(
             real_amount_in >= PRESALE_INFO.MIN_SPEND_PER_BUYER,
             "NOT ENOUGH VALUE"
         );
 
-        uint256 allowance = PRESALE_INFO.MAX_SPEND_PER_BUYER - buyer.baseDeposited;
-
+        uint256 allowance = PRESALE_INFO.MAX_SPEND_PER_BUYER -
+            buyer.baseDeposited;
         uint256 remaining = PRESALE_INFO.HARDCAP - STATUS.TOTAL_BASE_COLLECTED;
-
         allowance = allowance > remaining ? remaining : allowance;
-
         if (real_amount_in > allowance) {
             real_amount_in = allowance;
         }
-
         uint256 tokensSold = (real_amount_in * PRESALE_INFO.TOKEN_PRICE) /
             (10**uint256(PRESALE_INFO.B_TOKEN.decimals()));
 
@@ -319,28 +314,20 @@ contract Presale01 is ReentrancyGuard {
         if (buyer.baseDeposited == 0) {
             STATUS.NUM_BUYERS++;
         }
-
-        buyer.baseDeposited += real_amount_in + fee;
-
-        buyer.tokensOwed += tokensSold;
-
         buyer.timeToBuyerTokens = block.timestamp;
-
+        buyer.baseDeposited += real_amount_in + fee;
         LIST_BUYER_INFO[msg.sender].push(buyer);
-
+        buyer.tokensOwed += tokensSold;
+        LIST_BUYER_INFO[msg.sender].push(buyer);
         STATUS.TOTAL_BASE_COLLECTED += real_amount_in;
-        
         STATUS.TOTAL_TOKENS_SOLD += tokensSold;
-
         USER_FEES[msg.sender] += fee;
-
         TOTAL_FEE += fee;
-
+        
         // return unused ETH
         if (PRESALE_INFO.PRESALE_IN_ETH && real_amount_in + fee < msg.value) {
             payable(msg.sender).transfer(msg.value - real_amount_in - fee);
         }
-        
         // deduct non ETH token from user
         if (!PRESALE_INFO.PRESALE_IN_ETH) {
             TransferHelper.safeTransferFrom(
@@ -352,63 +339,75 @@ contract Presale01 is ReentrancyGuard {
         }
     }
 
+    // owner add new vesting period to LIST_VESTING_PERIOD array     
+    function ownerAddNewVestingPeriod(uint256 _distributionTime, uint256 _unlockRate) public {
+        VestingPeriod memory newVestingPeriod;
+        newVestingPeriod.distributionTime = _distributionTime;
+        newVestingPeriod.unlockRate = _unlockRate;
+        newVestingPeriod.statusWithDraw = false;
+        if(LIST_VESTING_PERIOD.length > 0) {
+            uint256 lengthVestingPeriod = LIST_VESTING_PERIOD.length -1;
+            uint256 totalRateWithdraw;
+            for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
+                totalRateWithdraw += LIST_VESTING_PERIOD[i].unlockRate;
+            }
+            if(LIST_VESTING_PERIOD[lengthVestingPeriod].distributionTime < _distributionTime && 100 - totalRateWithdraw - _unlockRate >= 0){
+                LIST_VESTING_PERIOD.push(newVestingPeriod);
+            }else {
+                revert("Wrong distribution time or unlockRate overflow!");
+            }
+        }else{
+            LIST_VESTING_PERIOD.push(newVestingPeriod);
+        }
+    } 
+    
     // withdraw presale tokens
     // percentile withdrawls allows fee on transfer or rebasing tokens to still work
     function userWithdrawTokens() external nonReentrant {
-        require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
+        require(presaleStatus() == 2, "NOT SUCCESS"); 
+
+        uint rateWithdrawRemaining;
+
+        for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
+            rateWithdrawRemaining += LIST_VESTING_PERIOD[i].unlockRate;
+        } 
+        
         require(
-            block.timestamp >= VESTING_PERIOD.firstDistributionType,
-            "NOT NOW"
+            rateWithdrawRemaining == 100,
+            "Total rate withdraw remaining must equal 100%"
         );
+
         require(
             STATUS.TOTAL_TOKENS_SOLD - STATUS.TOTAL_TOKENS_WITHDRAWN > 0,
             "ALL TOKEN HAS BEEN WITHDRAWN"
         );
-        require(PRESALE_INFO.ADD_LP != 2, "OFF-CHAIN MODE");
 
+        require(PRESALE_INFO.ADD_LP != 2, "OFF-CHAIN MODE");
         BuyerInfo storage buyer = BUYERS[msg.sender];
         require(!buyer.isWithdrawnBase, "NOTHING TO CLAIM");
-
         uint256 rateWithdrawAfter;
-        uint256 currentTime;
-        if (block.timestamp > VESTING_PERIOD.maxPeriod) {
-            currentTime = VESTING_PERIOD.maxPeriod;
-        } else {
-            currentTime = block.timestamp;
-        }
+        uint256 currentTime = block.timestamp;
         uint256 tokensOwed = buyer.tokensOwed;
-        if (VESTING_PERIOD.firstUnlockRate == 100) {
-            require(
-                buyer.totalTokenWithdraw != tokensOwed,
-                "Already withdraw all"
-            );
-            rateWithdrawAfter = 100;
-        } else {
-            uint256 spentCycles = (currentTime -
-                VESTING_PERIOD.firstDistributionType) /
-                VESTING_PERIOD.distributionInterval; // (m' - m0)/k
-            if (buyer.lastWithdraw == 0) {
-                rateWithdrawAfter =
-                    spentCycles *
-                    VESTING_PERIOD.unlockRateEachTime +
-                    VESTING_PERIOD.firstUnlockRate; //x + spentCycles*y
-            } else {
-                uint256 lastSpentCycles = (buyer.lastWithdraw -
-                    VESTING_PERIOD.firstDistributionType) /
-                    VESTING_PERIOD.distributionInterval; // (LD - M0)/k
-                rateWithdrawAfter =
-                    (spentCycles - lastSpentCycles) *
-                    VESTING_PERIOD.unlockRateEachTime; //(spentCycles - lastSpentCycles)*y
-                require(rateWithdrawAfter > 0, "INVALID MOMENT"); // SUCCESS
+
+        for(uint i = 0 ; i < LIST_VESTING_PERIOD.length ; i++) {
+            if(currentTime >= LIST_VESTING_PERIOD[i].distributionTime && !LIST_VESTING_PERIOD[i].statusWithDraw){
+                rateWithdrawAfter += LIST_VESTING_PERIOD[i].unlockRate;
+                LIST_VESTING_PERIOD[i].statusWithDraw = true;
             }
-        }
+        } 
+        require(
+            rateWithdrawAfter > 0,
+            "User withdraw All token success!"
+        );
+
         buyer.lastWithdraw = currentTime;
+
         uint256 amountWithdraw = (tokensOwed * rateWithdrawAfter) / 100;
 
         if (buyer.totalTokenWithdraw + amountWithdraw > buyer.tokensOwed) {
             amountWithdraw = buyer.tokensOwed - buyer.totalTokenWithdraw;
         }
-
+        
         STATUS.TOTAL_TOKENS_WITHDRAWN += amountWithdraw;
         buyer.totalTokenWithdraw += amountWithdraw; // update total token withdraw of buyer address
         TransferHelper.safeTransfer(
@@ -418,27 +417,38 @@ contract Presale01 is ReentrancyGuard {
         );
     }
 
-    // on presale failure
-    // percentile withdrawls allows fee on transfer or rebasing tokens to still work
+    // On presale failure
+    // Percentile withdrawls allows fee on transfer or rebasing tokens to still work
     function userWithdrawBaseTokens() external nonReentrant {
-        require(presaleStatus() == 3, "NOT FAILED"); // FAILED
+    // Check status of function presaleStatus return 3 (Status Failed)
+        require(presaleStatus() == 3, "NOT FAILED");
+    // Get information of buy on maooing BUYERS[msg.sender]   
         BuyerInfo storage buyer = BUYERS[msg.sender];
         require(!buyer.isWithdrawnBase, "NOTHING TO REFUND");
-
+    // Get satus of TOTAL_BASE_WITHDRAWN, add baseDeposited of buyer
         STATUS.TOTAL_BASE_WITHDRAWN += buyer.baseDeposited;
+    // Transfer base token (ETH, BNB) for user      
         TransferHelper.safeTransferBaseToken(
+    // Address of base token      
             address(PRESALE_INFO.B_TOKEN),
+    // Address of user(msg.sender) buy token of presale        
             payable(msg.sender),
+    // Number token to back for user       
             buyer.baseDeposited,
             !PRESALE_INFO.PRESALE_IN_ETH
         );
+    // Set isWithdrawnBase
         buyer.isWithdrawnBase = true;
     }
 
     // on presale failure
     // allows the owner to withdraw the tokens they sent for presale & initial liquidity
     function ownerRefundTokens() external onlyPresaleOwner {
+    // Check status of presaleStatus == 3 => Status not success   
         require(presaleStatus() == 3, "NOT FAILED"); // FAILED
+    // Check IS_OWNER_WITHDRAWN of owner with draw 
+    // => false -> not yet with draw
+    // => true -> has withdraw
         require(!STATUS.IS_OWNER_WITHDRAWN, "NOTHING TO WITHDRAW");
         TransferHelper.safeTransfer(
             address(PRESALE_INFO.S_TOKEN),
@@ -466,6 +476,7 @@ contract Presale01 is ReentrancyGuard {
         //     "Call listOnUniswap too early"
         // );
         require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
+        // IS_TRANSFERED_FEE == false  ===> Not transfer fee
         require(!STATUS.IS_TRANSFERED_FEE, "TRANSFERED FEE");
         // require(PRESALE_INFO.LIQUIDITY_PERCENT > 0, "LIQUIDITY_PERCENT = 0");
 
@@ -498,17 +509,17 @@ contract Presale01 is ReentrancyGuard {
             );
             return;
         }
-
+        // DAOLaunchBaseFee -> Fee for DApp set for token base token
         uint256 DAOLaunchBaseFee = ((STATUS.TOTAL_BASE_COLLECTED - TOTAL_TOKENS_REFUNDED) *
             PRESALE_FEE_INFO.DAOLAUNCH_BASE_FEE) / 1000;
         // base token liquidity
         uint256 baseLiquidity = (((STATUS.TOTAL_BASE_COLLECTED - TOTAL_TOKENS_REFUNDED) -
             DAOLaunchBaseFee) * PRESALE_INFO.LIQUIDITY_PERCENT) / 1000;
-        if (
-            PRESALE_INFO.ADD_LP == 0 &&
-            baseLiquidity > 0 &&
-            PRESALE_INFO.PRESALE_IN_ETH
-        ) {
+        // ADD_LD = 0 => Only smart contract
+        // ADD_LD = 1 => Only distribution
+        // ADD_LD = 2 => Only out side smarat contract
+
+        if ( PRESALE_INFO.ADD_LP == 0 && baseLiquidity > 0 && PRESALE_INFO.PRESALE_IN_ETH) {
             WETH.deposit{value: baseLiquidity}();
         }
 
@@ -535,6 +546,7 @@ contract Presale01 is ReentrancyGuard {
                 !PRESALE_INFO.PRESALE_IN_ETH
             );
         }
+
         if (DAOLaunchTokenFee > 0) {
             TransferHelper.safeTransfer(
                 address(PRESALE_INFO.S_TOKEN),
@@ -595,13 +607,13 @@ contract Presale01 is ReentrancyGuard {
             if (baseLiquidity > 0) {
                 // Fail the presale if the pair exists and contains presale token liquidity
                 if (
+                    //Get pair information of token A and token B
                     PRESALE_LOCK_FORWARDER.uniswapPairIsInitialised(
                         address(PRESALE_INFO.S_TOKEN),
                         address(PRESALE_INFO.B_TOKEN)
                     )
                 ) {
                     STATUS.LIST_ON_UNISWAP = true;
-
                     TransferHelper.safeTransferBaseToken(
                         address(PRESALE_INFO.B_TOKEN),
                         PRESALE_INFO.PRESALE_OWNER,
@@ -698,7 +710,7 @@ contract Presale01 is ReentrancyGuard {
         STATUS.IS_OWNER_WITHDRAWN = true;
     }
 
-    function userRefundTokens(uint8 _v, bytes32 _r, bytes32 _s) external onlyValidAccess(_v, _r, _s) nonReentrant {
+     function userRefundTokens(uint8 _v, bytes32 _r, bytes32 _s) external onlyValidAccess(_v, _r, _s) nonReentrant {
         require(presaleStatus() == 2, "NOT SUCCESS"); // SUCCESS
         require(block.timestamp > PRESALE_INFO.UNISWAP_LISTING_TIME, "EARLY TO CALL");
         require(PRESALE_INFO.UNISWAP_LISTING_TIME > 0, "NO LISTING TIME");
@@ -757,12 +769,12 @@ contract Presale01 is ReentrancyGuard {
             TOTAL_TOKENS_REFUNDED += buyer.baseDeposited - USER_FEES[msg.sender];
             TOTAL_FEES_REFUNDED += USER_FEES[msg.sender];
             TransferHelper.safeTransferBaseToken(
-            address(PRESALE_INFO.B_TOKEN),
-            payable(msg.sender),
-            buyer.baseDeposited,
-            !PRESALE_INFO.PRESALE_IN_ETH
-        );
-        buyer.isWithdrawnBase = true;
+                address(PRESALE_INFO.B_TOKEN),
+                payable(msg.sender),
+                buyer.baseDeposited,
+                !PRESALE_INFO.PRESALE_IN_ETH
+            );
+            buyer.isWithdrawnBase = true;
         }
     }
 
