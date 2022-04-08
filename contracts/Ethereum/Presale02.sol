@@ -293,14 +293,19 @@ contract Presale01 is ReentrancyGuard {
                 }
             }
         }
-
         require(
             real_amount_in >= PRESALE_INFO.MIN_SPEND_PER_BUYER,
             "NOT ENOUGH VALUE"
         );
-
-        uint256 allowance = PRESALE_INFO.MAX_SPEND_PER_BUYER -
-            buyer.baseDeposited;
+        uint256 allowance;
+        if(STATUS.SWITCH_ANYONE){
+            if(block.timestamp > PRESALE_INFO.TIME_TO_SWITCH_ONYONE && 
+               block.timestamp < PRESALE_INFO.END_TIME) {
+                   allowance = PRESALE_INFO.MAX_SPEND_PER_BUYER_AFTER_SWITCH_ANYONE - buyer.baseDeposited;
+            }
+        }else{
+            allowance = PRESALE_INFO.MAX_SPEND_PER_BUYER - buyer.baseDeposited;
+        }
         uint256 remaining = PRESALE_INFO.HARDCAP - STATUS.TOTAL_BASE_COLLECTED;
         allowance = allowance > remaining ? remaining : allowance;
         if (real_amount_in > allowance) {
@@ -812,7 +817,6 @@ contract Presale01 is ReentrancyGuard {
         require(_adminAddr != address(0), "INVALID ADDRESS");
         admins[_adminAddr] = _flag;
     }
-
     // if uniswap listing fails, call this function to release eth
     function finalize() external {
         require(msg.sender == DAOLAUNCH_DEV, "INVALID CALLER");
